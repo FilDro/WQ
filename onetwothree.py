@@ -675,3 +675,19 @@ def init_session_state():
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+
+# Call init_session_state and create the main app UI
+if __name__ == "__main__":
+    try:
+        # Initialize session state
+        init_session_state()
+        
+        # Create main app UI here
+        st.title("Aplikacja Wellness i Trening")
+        
+        # Your main app code...
+        # (The rest of your app UI logic)
+        
+    except Exception as e:
+        st.error(f"App initialization error: {str(e)}")
+        st.write("Please check your Supabase credentials and try again.")
