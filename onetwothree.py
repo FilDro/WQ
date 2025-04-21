@@ -504,34 +504,36 @@ def calculate_wellness_score(df: pd.DataFrame) -> float:
     # Get the most recent entry
     latest = df.iloc[-1]
 
-    # Reverse scales where needed so higher is always better
-    # Original scale: 1 is good, 7 is bad
-    reversed_metrics = {
-        'Zmęczenie': 8 - latest['Zmęczenie'],
-        'Jakość Snu': latest['Jakość Snu'],  # Already in correct scale
-        'Godziny Snu': latest['Godziny Snu'],  # Already in correct scale
-        'Ból Mięśni': 8 - latest['Ból Mięśni'],
-        'Stres': 8 - latest['Stres'],
-        'Trudność Treningu': 8 - latest['Trudność Treningu']
+    # SKALA JEST UJEDNOLICONA: 1 to zawsze negatywne, 7 to zawsze pozytywne
+    # Więc nie musimy już odwracać skal
+    metrics = {
+        'Zmęczenie': latest['Zmęczenie'],
+        'Jakość Snu': latest['Jakość Snu'],
+        'Godziny Snu': latest['Godziny Snu'],
+        'Ból Mięśni': latest['Ból Mięśni'],
+        'Stres': latest['Stres'],
+        'Trudność Treningu': latest['Trudność Treningu']
     }
 
-    # Calculate average (now 1 is bad, 7 is good)
-    avg_score = sum(reversed_metrics.values()) / len(reversed_metrics)
+    # Calculate average (1 is bad, 7 is good)
+    avg_score = sum(metrics.values()) / len(metrics)
 
     # Convert to percentage (0-100 scale)
     return round((avg_score - 1) * 100 / 6, 1)
 
 
-def get_color_for_value(value: float, is_reversed: bool = True) -> str:
+def get_color_for_value(value: float, is_reversed: bool = False) -> str:
     """Returns a color based on the value (1-7 scale) and whether higher values are good."""
-    if is_reversed:  # If 1 is good, 7 is bad (default for our app)
+    # Domyślnie teraz zakładamy, że wyższa wartość jest lepsza
+    # is_reversed = False dla wszystkich metryk po standaryzacji
+    if is_reversed:  # Jeśli 1 jest dobre, 7 jest złe (nie będziemy już tego używać)
         if value <= 2.5:
             return "#4CAF50"  # Green
         elif value <= 4.5:
             return "#FFC107"  # Yellow
         else:
             return "#F44336"  # Red
-    else:  # If 1 is bad, 7 is good
+    else:  # Jeśli 1 jest złe, 7 jest dobre (będziemy używać tylko tej części)
         if value >= 5.5:
             return "#4CAF50"  # Green
         elif value >= 3.5:
@@ -540,12 +542,12 @@ def get_color_for_value(value: float, is_reversed: bool = True) -> str:
             return "#F44336"  # Red
 
 
-def create_gauge_chart(value: float, title: str, is_reversed: bool = True):
+def create_gauge_chart(value: float, title: str, is_reversed: bool = False):
     """Creates a gauge chart for a metric."""
     # Convert to 0-100 scale
-    if is_reversed:  # If 1 is good, 7 is bad
+    if is_reversed:  # If 1 is good, 7 is bad (stara logika)
         gauge_value = ((value - 1) / 6) * 100
-    else:  # If 1 is bad, 7 is good
+    else:  # If 1 is bad, 7 is good (nowa logika)
         gauge_value = ((7 - value) / 6) * 100
 
     color = get_color_for_value(value, is_reversed)
@@ -561,9 +563,9 @@ def create_gauge_chart(value: float, title: str, is_reversed: bool = True):
             'borderwidth': 2,
             'bordercolor': "gray",
             'steps': [
-                {'range': [1, 3], 'color': '#c5e8c5' if is_reversed else '#ffcccb'},
+                {'range': [1, 3], 'color': '#ffcccb' if not is_reversed else '#c5e8c5'},
                 {'range': [3, 5], 'color': '#ffe4b2'},
-                {'range': [5, 7], 'color': '#ffcccb' if is_reversed else '#c5e8c5'}
+                {'range': [5, 7], 'color': '#c5e8c5' if not is_reversed else '#ffcccb'}
             ],
         },
         domain={'x': [0, 1], 'y': [0, 1]}
@@ -739,8 +741,6 @@ def init_session_state():
         'remember_client_code': False,
         'saved_client_code': '',
         'filter_days': 14,
-        'selected_metrics': ['Zmęczenie', 'Jakość Snu', 'Ból Mięśni'],
-        'view_mode': 'line',  # line or radar
         'show_client_dashboard': False
     }
     for key, value in defaults.items():
@@ -812,24 +812,12 @@ def show_client_questionnaire():
 
     total_pages = 6  # Total number of pages in the questionnaire
 
-    # Page navigation buttons
-    col1, col2, col3 = st.columns([1, 3, 1])
+    # Simplified page navigation - removed back button
+    col1, col2 = st.columns([3, 1])
     with col1:
-        if st.session_state.questionnaire_page > 1:
-            if st.button("⬅️ Wstecz"):
-                st.session_state.questionnaire_page -= 1
-                st.rerun()
-
-    with col2:
         st.write(f"Strona {st.session_state.questionnaire_page} z {total_pages}")
         progress = st.session_state.questionnaire_page / total_pages
         st.progress(progress)
-
-    with col3:
-        if st.session_state.questionnaire_page < total_pages:
-            if st.button("Dalej ➡️"):
-                st.session_state.questionnaire_page += 1
-                st.rerun()
 
     # Store responses
     if 'responses' not in st.session_state:
@@ -849,12 +837,12 @@ def show_client_questionnaire():
             st.header("Poziom Zmęczenia")
             st.write("Jak zmęczony/a czujesz się dzisiaj?")
 
-            # Scale explanation
+            # Scale explanation - ZAKTUALIZOWANE
             st.markdown("""
             <div class="scale-legend">
-                <div class="scale-legend-item">1: Wypoczęty/a</div>
+                <div class="scale-legend-item">1: Wyczerpany/a</div>
                 <div class="scale-legend-item">4: Średnie zmęczenie</div>
-                <div class="scale-legend-item">7: Bardzo zmęczony/a</div>
+                <div class="scale-legend-item">7: Wypoczęty/a</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -896,12 +884,12 @@ def show_client_questionnaire():
             st.header("Ból Mięśni")
             st.write("Jaki jest poziom odczuwanego bólu mięśni?")
 
-            # Scale explanation
+            # Scale explanation - ZAKTUALIZOWANE
             st.markdown("""
             <div class="scale-legend">
-                <div class="scale-legend-item">1: Brak bólu</div>
+                <div class="scale-legend-item">1: Silny ból</div>
                 <div class="scale-legend-item">4: Średni ból</div>
-                <div class="scale-legend-item">7: Silny ból</div>
+                <div class="scale-legend-item">7: Brak bólu</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -912,12 +900,12 @@ def show_client_questionnaire():
             st.header("Poziom Stresu")
             st.write("Jak bardzo zestresowany/a czujesz się dzisiaj?")
 
-            # Scale explanation
+            # Scale explanation - ZAKTUALIZOWANE
             st.markdown("""
             <div class="scale-legend">
-                <div class="scale-legend-item">1: Zrelaksowany/a</div>
+                <div class="scale-legend-item">1: Bardzo zestresowany/a</div>
                 <div class="scale-legend-item">4: Umiarkowany stres</div>
-                <div class="scale-legend-item">7: Bardzo zestresowany/a</div>
+                <div class="scale-legend-item">7: Zrelaksowany/a</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -928,12 +916,12 @@ def show_client_questionnaire():
             st.header("Trudność Ostatniego Treningu")
             st.write("Jak trudny był Twój ostatni trening?")
 
-            # Scale explanation
+            # Scale explanation - ZAKTUALIZOWANE
             st.markdown("""
             <div class="scale-legend">
-                <div class="scale-legend-item">1: Łatwy</div>
+                <div class="scale-legend-item">1: Bardzo trudny</div>
                 <div class="scale-legend-item">4: Średni</div>
-                <div class="scale-legend-item">7: Bardzo trudny</div>
+                <div class="scale-legend-item">7: Łatwy</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -983,8 +971,13 @@ def show_client_questionnaire():
                 else:
                     st.error("❌ Wystąpił błąd podczas zapisywania odpowiedzi. Spróbuj ponownie.")
 
+        # Add Dalej button to form that saves and navigates (except on last page)
         if st.session_state.questionnaire_page < total_pages:
-            st.form_submit_button("Zapisz i Kontynuuj")
+            if st.form_submit_button("Dalej ➡️"):
+                # Form submission automatically saves the values to session state
+                # Navigate to next page
+                st.session_state.questionnaire_page += 1
+                st.rerun()
 
     # Button to view dashboard
     if st.button("Zobacz swoje statystyki"):
@@ -1002,58 +995,15 @@ def show_client_dashboard():
 
     # Display stats
     if not responses_df.empty:
-        # Calculate wellness score
-        wellness_score = calculate_wellness_score(responses_df)
-
         st.header("Twój Obecny Status")
 
-        # Wellness score display
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            st.metric("Całkowity Wynik Wellness", f"{wellness_score}%")
-            st.write(f"Całkowita liczba ankiet: {total_responses}")
+        # Display basic stats
+        st.write(f"Całkowita liczba ankiet: {total_responses}")
 
-        with col2:
-            # Latest values
-            if not responses_df.empty:
-                latest_values = responses_df.iloc[-1]
-                latest_date = responses_df.index[-1].strftime("%Y-%m-%d %H:%M")
-                st.write(f"Ostatnia ankieta: {latest_date}")
-
-                # Metrics container
-                st.markdown("""
-                <div class="metric-container">
-                """, unsafe_allow_html=True)
-
-                # First row of metrics
-                cols = st.columns(3)
-                with cols[0]:
-                    fig = create_gauge_chart(latest_values['Zmęczenie'], "Zmęczenie", is_reversed=True)
-                    st.plotly_chart(fig, use_container_width=True)
-
-                with cols[1]:
-                    fig = create_gauge_chart(latest_values['Jakość Snu'], "Jakość Snu", is_reversed=False)
-                    st.plotly_chart(fig, use_container_width=True)
-
-                with cols[2]:
-                    fig = create_gauge_chart(latest_values['Ból Mięśni'], "Ból Mięśni", is_reversed=True)
-                    st.plotly_chart(fig, use_container_width=True)
-
-                # Second row of metrics
-                cols = st.columns(3)
-                with cols[0]:
-                    fig = create_gauge_chart(latest_values['Stres'], "Stres", is_reversed=True)
-                    st.plotly_chart(fig, use_container_width=True)
-
-                with cols[1]:
-                    fig = create_gauge_chart(latest_values['Trudność Treningu'], "Trudność Treningu", is_reversed=True)
-                    st.plotly_chart(fig, use_container_width=True)
-
-                with cols[2]:
-                    fig = create_gauge_chart(latest_values['Godziny Snu'], "Godziny Snu", is_reversed=False)
-                    st.plotly_chart(fig, use_container_width=True)
-
-                st.markdown("</div>", unsafe_allow_html=True)
+        # Latest values date
+        if not responses_df.empty:
+            latest_date = responses_df.index[-1].strftime("%Y-%m-%d %H:%M")
+            st.write(f"Ostatnia ankieta: {latest_date}")
 
         # Chart settings
         st.header("Trendy")
@@ -1064,30 +1014,15 @@ def show_client_dashboard():
                                     value=st.session_state.filter_days)
             st.session_state.filter_days = filter_days
 
-            metrics = st.multiselect(
-                "Wybierz metryki do pokazania:",
-                options=['Zmęczenie', 'Jakość Snu', 'Godziny Snu', 'Ból Mięśni', 'Stres', 'Trudność Treningu'],
-                default=st.session_state.selected_metrics
-            )
-            st.session_state.selected_metrics = metrics
+        # Always show all metrics with different colors
+        all_metrics = ['Zmęczenie', 'Jakość Snu', 'Godziny Snu', 'Ból Mięśni', 'Stres', 'Trudność Treningu']
 
-            view_mode = st.radio("Typ wykresu:", ["Liniowy", "Radarowy"],
-                                 index=0 if st.session_state.view_mode == "line" else 1)
-            st.session_state.view_mode = "line" if view_mode == "Liniowy" else "radar"
-
-        with col2:
-            if st.session_state.view_mode == "line":
-                trend_chart = create_trend_chart(responses_df, metrics, filter_days)
-                if trend_chart:
-                    st.plotly_chart(trend_chart, use_container_width=True)
-                else:
-                    st.info("Niewystarczająca ilość danych do wygenerowania wykresu.")
-            else:
-                radar_chart = create_radar_chart(responses_df)
-                if radar_chart:
-                    st.plotly_chart(radar_chart, use_container_width=True)
-                else:
-                    st.info("Niewystarczająca ilość danych do wygenerowania wykresu radarowego (minimum 2 ankiety).")
+        # Create and display trend chart with all metrics
+        trend_chart = create_trend_chart(responses_df, all_metrics, filter_days)
+        if trend_chart:
+            st.plotly_chart(trend_chart, use_container_width=True)
+        else:
+            st.info("Niewystarczająca ilość danych do wygenerowania wykresu.")
 
         # Notes section
         st.header("Notatki Trenera")
@@ -1164,19 +1099,9 @@ def show_trainer_dashboard():
             if not responses_df.empty:
                 st.write(f"Liczba ankiet: {total_responses}")
 
-                # Latest values
-                latest_values = responses_df.iloc[-1]
+                # Latest values date
                 latest_date = responses_df.index[-1].strftime("%Y-%m-%d %H:%M")
                 st.write(f"Ostatnia ankieta: {latest_date}")
-
-                # Display metrics
-                cols = st.columns(3)
-                for i, metric in enumerate(
-                        ['Zmęczenie', 'Jakość Snu', 'Ból Mięśni', 'Stres', 'Trudność Treningu', 'Godziny Snu']):
-                    with cols[i % 3]:
-                        is_reversed = metric not in ['Jakość Snu', 'Godziny Snu']
-                        fig = create_gauge_chart(latest_values[metric], metric, is_reversed=is_reversed)
-                        st.plotly_chart(fig, use_container_width=True)
 
                 # Trend chart
                 st.subheader("Trendy")
@@ -1192,19 +1117,15 @@ def show_trainer_dashboard():
                         key="trainer_days"
                     )
 
-                    metrics = st.multiselect(
-                        "Wybierz metryki:",
-                        options=['Zmęczenie', 'Jakość Snu', 'Godziny Snu', 'Ból Mięśni', 'Stres', 'Trudność Treningu'],
-                        default=st.session_state.selected_metrics,
-                        key="trainer_metrics"
-                    )
+                # Always show all metrics with different colors
+                all_metrics = ['Zmęczenie', 'Jakość Snu', 'Godziny Snu', 'Ból Mięśni', 'Stres', 'Trudność Treningu']
 
-                with col2:
-                    trend_chart = create_trend_chart(responses_df, metrics, filter_days)
-                    if trend_chart:
-                        st.plotly_chart(trend_chart, use_container_width=True)
-                    else:
-                        st.info("Niewystarczająca ilość danych.")
+                # Create and display trend chart with all metrics
+                trend_chart = create_trend_chart(responses_df, all_metrics, filter_days)
+                if trend_chart:
+                    st.plotly_chart(trend_chart, use_container_width=True)
+                else:
+                    st.info("Niewystarczająca ilość danych.")
 
                 # Notes from client
                 if 'Notatka' in responses_df.columns:
